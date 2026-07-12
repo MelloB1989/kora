@@ -14,7 +14,7 @@ const entries: Record<Target, { entry: string; name: string; format: "es" | "iif
   // Content script: classic script → must be a self-contained IIFE.
   content: { entry: "src/content/index.ts", name: "content", format: "iife" },
   // MAIN-world page script: injected into the page → self-contained IIFE.
-  page: { entry: "src/adapters/netflix/pageScript.ts", name: "pageScript", format: "iife" },
+  page: { entry: "src/adapters/pageScript.ts", name: "pageScript", format: "iife" },
 };
 
 const cfg = entries[target];

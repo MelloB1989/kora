@@ -75,6 +75,12 @@ func JoinURL(r *models.Room) string {
 	switch r.Platform {
 	case models.PlatformNetflix:
 		return fmt.Sprintf("https://www.netflix.com/watch/%s?wt_room=%s", r.ContentID, r.RoomID)
+	case models.PlatformYouTube:
+		return fmt.Sprintf("https://www.youtube.com/watch?v=%s&wt_room=%s", r.ContentID, r.RoomID)
+	case models.PlatformPrime:
+		return fmt.Sprintf("https://www.primevideo.com/detail/%s?wt_room=%s", r.ContentID, r.RoomID)
+	case models.PlatformHotstar:
+		return fmt.Sprintf("https://www.hotstar.com/watch/%s?wt_room=%s", r.ContentID, r.RoomID)
 	default:
 		return ""
 	}

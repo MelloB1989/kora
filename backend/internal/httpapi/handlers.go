@@ -126,8 +126,8 @@ func (a *API) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if req.Platform != models.PlatformNetflix {
-		writeError(w, http.StatusBadRequest, "unsupported platform (Phase 1 supports: netflix)")
+	if !models.SupportedPlatforms()[req.Platform] {
+		writeError(w, http.StatusBadRequest, "unsupported platform (supported: netflix, prime, hotstar, youtube)")
 		return
 	}
 	if strings.TrimSpace(req.ContentID) == "" {

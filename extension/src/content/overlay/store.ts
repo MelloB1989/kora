@@ -2,7 +2,9 @@
 // the SyncEngine status; actions send CsToSw messages back to the worker.
 
 import { create } from "zustand";
+import type { PlatformAdapter } from "../../adapters/PlatformAdapter";
 import type { MemberInfo, RoomInfo } from "../../shared/protocol";
+import type { PlatformId } from "../../shared/platforms";
 import type { ConnState, SwToCs } from "../../shared/messages";
 import type { SwPort } from "../port";
 import type { SyncStatus } from "../syncEngine";
@@ -23,6 +25,7 @@ export interface OverlayState {
   // ui
   collapsed: boolean;
   contentId: string | null;
+  platform: PlatformId | null;
 
   toggleCollapsed: () => void;
 }
@@ -34,6 +37,7 @@ export const useOverlayStore = create<OverlayState>((set) => ({
   sync: { state: "idle" },
   collapsed: false,
   contentId: null,
+  platform: null,
   toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
 }));
 
@@ -91,6 +95,10 @@ export function setContentId(contentId: string | null): void {
   useOverlayStore.setState({ contentId });
 }
 
+export function setPlatform(platform: PlatformId): void {
+  useOverlayStore.setState({ platform });
+}
+
 // Bound action creators used by components (need the live port + adapter).
 export interface OverlayActions {
   login: (email: string, password: string) => void;
@@ -101,20 +109,22 @@ export interface OverlayActions {
   leaveRoom: () => void;
 }
 
-export function makeActions(port: SwPort, getContentId: () => string | null): OverlayActions {
+export function makeActions(port: SwPort, adapter: PlatformAdapter): OverlayActions {
   return {
     login: (email, password) => port.send({ kind: "login", email, password }),
     signup: (email, password, displayName) =>
       port.send({ kind: "signup", email, password, displayName }),
     logout: () => port.send({ kind: "logout" }),
-    createRoom: () => {
-      const contentId = getContentId();
+    createRoom: async () => {
+      const contentId = adapter.getContentId();
       if (!contentId) {
-        useOverlayStore.setState({ roomError: "Open a Netflix title first." });
+        useOverlayStore.setState({ roomError: "Open a title first, then create a room." });
         return;
       }
-      const title = document.title.replace(/\s*[-|].*$/, "").trim();
-      port.send({ kind: "createRoom", contentId, title });
+      const title =
+        (await adapter.getTitle().catch(() => null)) ??
+        document.title.replace(/\s*[-|].*$/, "").trim();
+      port.send({ kind: "createRoom", platform: adapter.platform, contentId, title });
     },
     joinRoom: (roomId) => port.send({ kind: "joinRoom", roomId }),
     leaveRoom: () => {

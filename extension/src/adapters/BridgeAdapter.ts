@@ -1,18 +1,21 @@
-// Isolated-world side of the Netflix adapter. Injects pageScript.js into the
-// MAIN world, then drives the player over the postMessage RPC bridge. Also
-// owns echo suppression: programmatically-applied remote events must not be
-// re-broadcast as if the local user triggered them.
+// Isolated-world adapter shared by every platform. Injects the MAIN-world
+// page script, drives the player over the postMessage RPC bridge, and owns
+// echo suppression (programmatically-applied remote events must not be
+// re-broadcast as if the local user triggered them). Platform-specific logic
+// lives in shared/platforms.ts (URL/id detection) and the page-script backends
+// (player control) — this class is platform-agnostic.
 
-import { extensionUrl } from "../../shared/browser";
+import { extensionUrl } from "../shared/browser";
 import {
   PAGE_SOURCE_CONTENT,
   PAGE_SOURCE_PAGE,
   type PageCommand,
   type PageEvent,
   type PagePlayerState,
-} from "../../shared/messages";
-import type { PlaybackAction } from "../../shared/protocol";
-import type { PlatformAdapter, PlaybackState, UserActionEvent } from "../PlatformAdapter";
+} from "../shared/messages";
+import type { PlatformSpec } from "../shared/platforms";
+import type { PlaybackAction } from "../shared/protocol";
+import type { PlatformAdapter, PlaybackState, UserActionEvent } from "./PlatformAdapter";
 
 interface Suppression {
   action: PlaybackAction;
@@ -23,8 +26,8 @@ interface Suppression {
 const SUPPRESS_MS = 2500;
 const RPC_TIMEOUT_MS = 5000;
 
-export class NetflixAdapter implements PlatformAdapter {
-  readonly platform = "netflix" as const;
+export class BridgeAdapter implements PlatformAdapter {
+  readonly platform: PlatformSpec["id"];
 
   private nextId = 1;
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
@@ -32,21 +35,33 @@ export class NetflixAdapter implements PlatformAdapter {
   private readonly unavailCbs = new Set<(reason: string) => void>();
   private readonly suppressions: Suppression[] = [];
   private readyResolve: (() => void) | null = null;
+  private attached = false;
   private listener = (e: MessageEvent) => this.onMessage(e);
 
+  constructor(private readonly spec: PlatformSpec) {
+    this.platform = spec.id;
+  }
+
   isWatchPage(url: string): boolean {
-    return /\/watch\/\d+/.test(url);
+    try {
+      return this.spec.isWatchPage(new URL(url));
+    } catch {
+      return false;
+    }
   }
 
   getContentId(): string | null {
-    const m = location.href.match(/\/watch\/(\d+)/);
-    return m ? m[1] : null;
+    try {
+      return this.spec.contentId(new URL(location.href));
+    } catch {
+      return null;
+    }
   }
 
   async attach(): Promise<void> {
+    if (this.attached) return;
+    this.attached = true;
     window.addEventListener("message", this.listener);
-    // Inject the MAIN-world script (world:"MAIN" registration in the content
-    // script also works; a tag injection keeps it self-contained here).
     const script = document.createElement("script");
     script.src = extensionUrl("pageScript.js");
     script.type = "text/javascript";
@@ -55,9 +70,7 @@ export class NetflixAdapter implements PlatformAdapter {
 
     await new Promise<void>((resolve) => {
       this.readyResolve = resolve;
-      // Don't hang forever: resolve after the page-script poll window even if
-      // "ready" never arrives — getState will then surface unavailability.
-      setTimeout(resolve, 31_000);
+      setTimeout(resolve, 31_000); // don't hang forever; getState surfaces failure
     });
   }
 
@@ -66,6 +79,7 @@ export class NetflixAdapter implements PlatformAdapter {
     this.pending.clear();
     this.userCbs.clear();
     this.unavailCbs.clear();
+    this.attached = false;
   }
 
   async getState(): Promise<PlaybackState> {
@@ -107,8 +121,6 @@ export class NetflixAdapter implements PlatformAdapter {
     this.suppressions.push({ action, targetTime, until: Date.now() + SUPPRESS_MS });
   }
 
-  // Returns true and consumes a matching suppression entry if this user event
-  // is actually the echo of a remote event we just applied.
   private consumeSuppression(action: PlaybackAction, currentTime: number): boolean {
     const now = Date.now();
     for (let i = 0; i < this.suppressions.length; i++) {
@@ -163,11 +175,7 @@ export class NetflixAdapter implements PlatformAdapter {
         if (this.consumeSuppression(msg.action, msg.state.currentTime)) return;
         const evt: UserActionEvent = {
           action: msg.action,
-          state: {
-            currentTime: msg.state.currentTime,
-            paused: msg.state.paused,
-            duration: msg.state.duration,
-          },
+          state: { currentTime: msg.state.currentTime, paused: msg.state.paused, duration: msg.state.duration },
         };
         for (const cb of this.userCbs) cb(evt);
         break;

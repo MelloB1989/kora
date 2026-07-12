@@ -38,9 +38,16 @@ func TestEndRequiresHost(t *testing.T) {
 }
 
 func TestJoinURL(t *testing.T) {
-	url := JoinURL(&models.Room{Platform: models.PlatformNetflix, ContentID: "81234567", RoomID: "r_abc"})
-	want := "https://www.netflix.com/watch/81234567?wt_room=r_abc"
-	if url != want {
-		t.Fatalf("got %q want %q", url, want)
+	cases := map[string]struct{ platform, contentID, want string }{
+		"netflix": {models.PlatformNetflix, "81234567", "https://www.netflix.com/watch/81234567?wt_room=r_abc"},
+		"youtube": {models.PlatformYouTube, "dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ&wt_room=r_abc"},
+		"prime":   {models.PlatformPrime, "B0ABCDEFGH", "https://www.primevideo.com/detail/B0ABCDEFGH?wt_room=r_abc"},
+		"hotstar": {models.PlatformHotstar, "1260022", "https://www.hotstar.com/watch/1260022?wt_room=r_abc"},
+	}
+	for name, c := range cases {
+		got := JoinURL(&models.Room{Platform: c.platform, ContentID: c.contentID, RoomID: "r_abc"})
+		if got != c.want {
+			t.Errorf("%s: got %q want %q", name, got, c.want)
+		}
 	}
 }

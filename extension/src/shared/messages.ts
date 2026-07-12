@@ -15,7 +15,7 @@ export type CsToSw =
   | { kind: "signup"; email: string; password: string; displayName: string }
   | { kind: "logout" }
   | { kind: "getSession" }
-  | { kind: "createRoom"; contentId: string; title: string }
+  | { kind: "createRoom"; platform: string; contentId: string; title: string }
   | { kind: "joinRoom"; roomId: string }
   | { kind: "leaveRoom" }
   // Local playback action to broadcast to the room.
@@ -59,7 +59,6 @@ export type PageCommand =
   | { cmd: "play" }
   | { cmd: "pause" }
   | { cmd: "seek"; seconds: number }
-  | { cmd: "getContentId" }
   | { cmd: "getTitle" };
 
 export interface PageRequest {

@@ -6,8 +6,8 @@ circumvention, no video re-streaming or proxying.
 
 ```
 Browser Extension (Chrome MV3)
-  ├─ Platform Adapter (Netflix first; Prime/Hotstar/YouTube later)
-  │    pageScript.ts (MAIN world) ── window.postMessage ── NetflixAdapter (isolated world)
+  ├─ Platform Adapter (Netflix, Prime Video, Hotstar, YouTube)
+  │    pageScript.ts (MAIN world, per-platform backends) ── window.postMessage ── BridgeAdapter (isolated world)
   ├─ Content script: sync engine (echo suppression, drift correction), overlay mount
   ├─ Overlay UI: React in shadow DOM (room panel, members, sync status, login)
   └─ Background service worker: owns the WebSocket, auth token, session persistence
@@ -56,11 +56,16 @@ store, because `sam local` does not support WebSocket APIs.
 - **Content script** talks to the SW over a long-lived `chrome.runtime.connect` Port and runs the
   sync engine: outbound (user actions → `playback_event`) and inbound (remote events → adapter,
   with echo suppression and drift correction).
-- **Netflix control** happens in a MAIN-world page script via the unofficial
-  `netflix.appContext.state.playerApp.getAPI().videoPlayer` API (direct `video.currentTime`
-  writes don't stick on Netflix). Times there are **milliseconds**. All access is defensive;
-  failure degrades to a visible "sync unavailable" state, never a crash.
-- Room links: `https://www.netflix.com/watch/{contentId}?wt_room={roomId}` — the content script
-  detects `wt_room` and offers to join. Manual room-code paste is the fallback.
+- **Player control** happens in a MAIN-world page script (`extension/src/adapters/pageScript.ts`)
+  with one backend per platform, selected from `shared/platforms.ts`:
+  - **Netflix** — the unofficial `netflix.appContext.state.playerApp.getAPI().videoPlayer` API
+    (direct `video.currentTime` writes don't stick; times there are **milliseconds**).
+  - **YouTube** — the `#movie_player` API (`playVideo`/`pauseVideo`/`seekTo`, seconds).
+  - **Prime Video / Hotstar** — the generic `<video>` element backend.
+  All backends detect user actions from the underlying `<video>` element's DOM events. Access is
+  defensive; failure degrades to a visible "sync unavailable" state, never a crash.
+- Adding a platform = one entry in `shared/platforms.ts` + one backend in `pageScript.ts`.
+- Room links carry `?wt_room={roomId}` on the platform's watch URL — the content script detects it
+  and offers to join. Manual room-code paste is the fallback.
 
 See `docs/ws-protocol.md` for the wire protocol.

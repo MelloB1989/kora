@@ -11,10 +11,23 @@ import (
 
 const (
 	PlatformNetflix = "netflix"
+	PlatformPrime   = "prime"
+	PlatformHotstar = "hotstar"
+	PlatformYouTube = "youtube"
 
 	RoomStatusActive = "active"
 	RoomStatusEnded  = "ended"
 )
+
+// SupportedPlatforms reports whether a platform id is one we relay for.
+func SupportedPlatforms() map[string]bool {
+	return map[string]bool{
+		PlatformNetflix: true,
+		PlatformPrime:   true,
+		PlatformHotstar: true,
+		PlatformYouTube: true,
+	}
+}
 
 type User struct {
 	UserID       string    `dynamodbav:"userId" json:"userId"`

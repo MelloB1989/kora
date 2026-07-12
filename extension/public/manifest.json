@@ -2,17 +2,29 @@
   "manifest_version": 3,
   "name": "WatchTogether",
   "version": "0.1.0",
-  "description": "Sync Netflix playback with friends, plus a shared room overlay.",
+  "description": "Sync playback with friends on Netflix, Prime Video, Hotstar, and YouTube, plus a shared room overlay.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "alarms", "scripting"],
-  "host_permissions": ["https://www.netflix.com/*"],
+  "host_permissions": [
+    "https://www.netflix.com/*",
+    "https://www.primevideo.com/*",
+    "https://www.amazon.com/gp/video/*",
+    "https://www.hotstar.com/*",
+    "https://www.youtube.com/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.netflix.com/*"],
+      "matches": [
+        "https://www.netflix.com/*",
+        "https://www.primevideo.com/*",
+        "https://www.amazon.com/gp/video/*",
+        "https://www.hotstar.com/*",
+        "https://www.youtube.com/watch*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
@@ -20,7 +32,13 @@
   "web_accessible_resources": [
     {
       "resources": ["pageScript.js"],
-      "matches": ["https://www.netflix.com/*"]
+      "matches": [
+        "https://www.netflix.com/*",
+        "https://www.primevideo.com/*",
+        "https://www.amazon.com/*",
+        "https://www.hotstar.com/*",
+        "https://www.youtube.com/*"
+      ]
     }
   ]
 }
