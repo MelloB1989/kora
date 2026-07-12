@@ -7,6 +7,7 @@ import type {
   PlaybackAction,
   PlaybackedState,
   RoomInfo,
+  SignalPayload,
 } from "./protocol";
 
 // ---- Content script → Service worker (Port) ----
@@ -25,7 +26,9 @@ export type CsToSw =
   // Social layer.
   | { kind: "chat"; text: string }
   | { kind: "reaction"; emoji: string }
-  | { kind: "soundbox"; soundId: string };
+  | { kind: "soundbox"; soundId: string }
+  // WebRTC signaling to one target member.
+  | { kind: "signal"; target: string; payload: SignalPayload };
 
 // ---- Service worker → Content script (Port) ----
 export type ConnState = "disconnected" | "connecting" | "connected";
@@ -53,7 +56,9 @@ export type SwToCs =
   // Social layer (relayed from other members).
   | { kind: "chat"; senderId: string; senderName: string; text: string; ts: number }
   | { kind: "reaction"; senderId: string; senderName: string; emoji: string }
-  | { kind: "soundbox"; senderId: string; senderName: string; soundId: string };
+  | { kind: "soundbox"; senderId: string; senderName: string; soundId: string }
+  // WebRTC signaling from a peer.
+  | { kind: "remoteSignal"; senderId: string; senderName: string; payload: SignalPayload };
 
 export const PORT_NAME = "wt-port";
 

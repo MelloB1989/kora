@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { SOUNDS } from "../soundbox";
+import { useCallStore, type CallController } from "./callStore";
 import { useOverlayStore, type OverlayActions } from "./store";
+import { VideoTiles } from "./VideoTiles";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "🔥", "🎉"];
 
@@ -10,12 +12,13 @@ const connColor: Record<string, string> = {
   disconnected: "#e5484d",
 };
 
-export function App({ actions }: { actions: OverlayActions }) {
+export function App({ actions, call }: { actions: OverlayActions; call: CallController }) {
   const s = useOverlayStore();
 
   return (
     <>
       <ReactionsLayer />
+      <VideoTiles controls={call} />
       {s.collapsed ? (
         <button className="wt-fab" onClick={s.toggleCollapsed} title="WatchTogether">
           <span className="wt-dot" style={{ background: connColor[s.conn] }} /> WT
@@ -29,7 +32,7 @@ export function App({ actions }: { actions: OverlayActions }) {
               –
             </button>
           </header>
-          {!s.authed ? <AuthForm actions={actions} /> : <RoomPanel actions={actions} />}
+          {!s.authed ? <AuthForm actions={actions} /> : <RoomPanel actions={actions} call={call} />}
         </div>
       )}
     </>
@@ -69,7 +72,7 @@ function AuthForm({ actions }: { actions: OverlayActions }) {
   );
 }
 
-function RoomPanel({ actions }: { actions: OverlayActions }) {
+function RoomPanel({ actions, call }: { actions: OverlayActions; call: CallController }) {
   const { room, tab, setTab } = useOverlayStore();
   if (!room) return <RoomLobby actions={actions} />;
   return (
@@ -82,7 +85,7 @@ function RoomPanel({ actions }: { actions: OverlayActions }) {
           Chat
         </button>
       </div>
-      {tab === "room" ? <RoomTab actions={actions} /> : <ChatTab actions={actions} />}
+      {tab === "room" ? <RoomTab actions={actions} call={call} /> : <ChatTab actions={actions} />}
       <SocialTray actions={actions} />
     </div>
   );
@@ -111,8 +114,9 @@ function RoomLobby({ actions }: { actions: OverlayActions }) {
   );
 }
 
-function RoomTab({ actions }: { actions: OverlayActions }) {
+function RoomTab({ actions, call }: { actions: OverlayActions; call: CallController }) {
   const { room, members, joinUrl, sync, userId } = useOverlayStore();
+  const inCall = useCallStore((s) => s.inCall || s.connecting);
   const [copied, setCopied] = useState(false);
   const copy = () => {
     if (!joinUrl) return;
@@ -144,6 +148,12 @@ function RoomTab({ actions }: { actions: OverlayActions }) {
           </li>
         ))}
       </ul>
+      {!inCall && (
+        <div className="wt-row">
+          <button className="wt-btn wt-sm" onClick={() => call.startCall(false)}>🎙️ Voice</button>
+          <button className="wt-btn wt-sm" onClick={() => call.startCall(true)}>📹 Video</button>
+        </div>
+      )}
       <button className="wt-btn" onClick={actions.leaveRoom}>Leave room</button>
     </div>
   );

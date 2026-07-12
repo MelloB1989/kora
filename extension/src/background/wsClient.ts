@@ -91,6 +91,21 @@ export class WsClient {
     this.ws!.send(JSON.stringify(env));
   }
 
+  // sendTargeted adds a `target` userId (WebRTC signaling to one member).
+  sendTargeted<P>(type: string, roomId: string, target: string, payload: P): void {
+    if (this.status !== "connected") return;
+    const env: Envelope<P> = {
+      v: PROTOCOL_VERSION,
+      type,
+      roomId,
+      target,
+      ts: Date.now(),
+      seq: ++this.seq,
+      payload,
+    };
+    this.ws!.send(JSON.stringify(env));
+  }
+
   private startPing(): void {
     this.stopPing();
     this.pingTimer = setInterval(() => this.send("ping"), PING_INTERVAL_MS);

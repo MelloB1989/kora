@@ -4,11 +4,12 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import type { CallController } from "./callStore";
 import type { OverlayActions } from "./store";
 // Vite inlines this as a string (see ?inline), injected into the shadow root.
 import css from "./overlay.css?inline";
 
-export function mountOverlay(actions: OverlayActions): void {
+export function mountOverlay(actions: OverlayActions, call: CallController): void {
   const host = document.createElement("div");
   host.id = "wt-overlay-root";
   document.documentElement.appendChild(host);
@@ -23,7 +24,7 @@ export function mountOverlay(actions: OverlayActions): void {
 
   createRoot(mountPoint).render(
     <StrictMode>
-      <App actions={actions} />
+      <App actions={actions} call={call} />
     </StrictMode>,
   );
 }

@@ -68,4 +68,15 @@ store, because `sam local` does not support WebSocket APIs.
 - Room links carry `?wt_room={roomId}` on the platform's watch URL — the content script detects it
   and offers to join. Manual room-code paste is the fallback.
 
+## Social + real-time layers
+
+- **Chat / reactions / soundbox** ride the existing WebSocket as relayed message types
+  (`chat`, `reaction`, `soundbox`). They are ephemeral (not persisted) for the MVP. Soundbox
+  effects are synthesized client-side with the Web Audio API; S3-hosted custom clips come later.
+- **Voice / video** use a **WebRTC mesh** (`extension/src/content/webrtc.ts`) — one peer connection
+  per pair of members, with SDP/ICE exchanged over the WebSocket as targeted `webrtc_signal`
+  messages. A deterministic initiator rule (larger userId offers) avoids offer glare. Video tiles
+  render as a draggable PiP overlay. Public STUN only for now; a TURN server and an SFU (LiveKit /
+  mediasoup) for rooms larger than ~4-5 are v2 concerns.
+
 See `docs/ws-protocol.md` for the wire protocol.

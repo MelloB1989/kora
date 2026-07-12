@@ -22,6 +22,7 @@ import {
   type PlaybackPayload,
   type ReactionPayload,
   type RoomStatePayload,
+  type SignalPayload,
   type SoundboxPayload,
 } from "../shared/protocol";
 import * as api from "./api";
@@ -195,6 +196,9 @@ async function handleCsMessage(port: chrome.runtime.Port, msg: CsToSw): Promise<
     case "soundbox":
       if (currentRoomId) ws.send(ClientType.Soundbox, { soundId: msg.soundId }, currentRoomId);
       break;
+    case "signal":
+      if (currentRoomId) ws.sendTargeted(ClientType.Signal, currentRoomId, msg.target, msg.payload);
+      break;
   }
 }
 
@@ -258,6 +262,15 @@ function handleWsFrame(env: Envelope): void {
     case ServerType.Soundbox: {
       const p = env.payload as SoundboxPayload;
       broadcast({ kind: "soundbox", senderId: env.senderId ?? "", senderName: env.senderName ?? "", soundId: p.soundId });
+      break;
+    }
+    case ServerType.Signal: {
+      broadcast({
+        kind: "remoteSignal",
+        senderId: env.senderId ?? "",
+        senderName: env.senderName ?? "",
+        payload: env.payload as SignalPayload,
+      });
       break;
     }
     case ServerType.Error: {
