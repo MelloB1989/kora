@@ -9,6 +9,10 @@ export const ClientType = {
   PlaybackEvent: "playback_event",
   Heartbeat: "heartbeat",
   Ping: "ping",
+  Chat: "chat",
+  Reaction: "reaction",
+  Soundbox: "soundbox",
+  Signal: "webrtc_signal",
 } as const;
 
 export const ServerType = {
@@ -20,6 +24,10 @@ export const ServerType = {
   HostChanged: "host_changed",
   Error: "error",
   Pong: "pong",
+  Chat: "chat",
+  Reaction: "reaction",
+  Soundbox: "soundbox",
+  Signal: "webrtc_signal",
 } as const;
 
 export type PlaybackAction = "play" | "pause" | "seek";
@@ -29,9 +37,30 @@ export interface Envelope<P = unknown> {
   type: string;
   roomId?: string;
   senderId?: string;
+  senderName?: string;
+  target?: string;
   ts?: number;
   seq?: number;
   payload?: P;
+}
+
+export interface ChatPayload {
+  text: string;
+}
+
+export interface ReactionPayload {
+  emoji: string;
+}
+
+export interface SoundboxPayload {
+  soundId: string;
+}
+
+// WebRTC signaling payload (SDP offer/answer or ICE candidate).
+export interface SignalPayload {
+  kind: "offer" | "answer" | "candidate";
+  description?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
 }
 
 export interface JoinRoomPayload {

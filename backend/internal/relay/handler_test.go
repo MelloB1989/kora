@@ -337,6 +337,64 @@ func TestGoneConnectionIsPruned(t *testing.T) {
 	}
 }
 
+func TestChatRelayStampsSenderAndExcludesSelf(t *testing.T) {
+	fx := newFixture(t)
+	room := fx.createRoom(t, "u_a")
+	fx.connect(t, "ca", "u_a", "Alice")
+	fx.connect(t, "cb", "u_b", "Bob")
+	fx.join(t, "ca", room.RoomID)
+	fx.join(t, "cb", room.RoomID)
+
+	fx.message(t, "ca", Envelope{V: 1, Type: TypeChat, Payload: mustJSON(map[string]string{"text": "hi"})})
+
+	got := fx.sender.lastOfType("cb", TypeChat)
+	if got == nil {
+		t.Fatal("chat not relayed to other member")
+	}
+	if got.SenderID != "u_a" || got.SenderName != "Alice" {
+		t.Fatalf("sender not stamped: id=%q name=%q", got.SenderID, got.SenderName)
+	}
+	if fx.sender.lastOfType("ca", TypeChat) != nil {
+		t.Fatal("sender received their own chat (echo)")
+	}
+}
+
+func TestReactionRequiresRoom(t *testing.T) {
+	fx := newFixture(t)
+	fx.connect(t, "c1", "u1", "A")
+	fx.message(t, "c1", Envelope{V: 1, Type: TypeReaction, Payload: mustJSON(map[string]string{"emoji": "🔥"})})
+	e := fx.sender.lastOfType("c1", TypeError)
+	if e == nil {
+		t.Fatal("expected NOT_IN_ROOM error")
+	}
+}
+
+func TestSignalTargetsSingleMember(t *testing.T) {
+	fx := newFixture(t)
+	room := fx.createRoom(t, "u_a")
+	fx.connect(t, "ca", "u_a", "A")
+	fx.connect(t, "cb", "u_b", "B")
+	fx.connect(t, "cc", "u_c", "C")
+	fx.join(t, "ca", room.RoomID)
+	fx.join(t, "cb", room.RoomID)
+	fx.join(t, "cc", room.RoomID)
+
+	fx.message(t, "ca", Envelope{
+		V: 1, Type: TypeSignal, Target: "u_b",
+		Payload: mustJSON(map[string]string{"kind": "offer", "sdp": "x"}),
+	})
+
+	if fx.sender.lastOfType("cb", TypeSignal) == nil {
+		t.Fatal("target did not receive signal")
+	}
+	if fx.sender.lastOfType("cc", TypeSignal) != nil {
+		t.Fatal("non-target received signal")
+	}
+	if fx.sender.lastOfType("ca", TypeSignal) != nil {
+		t.Fatal("sender received their own signal")
+	}
+}
+
 func TestPingPong(t *testing.T) {
 	fx := newFixture(t)
 	fx.connect(t, "c1", "u1", "A")

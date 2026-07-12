@@ -7,7 +7,26 @@ import type { MemberInfo, RoomInfo } from "../../shared/protocol";
 import type { PlatformId } from "../../shared/platforms";
 import type { ConnState, SwToCs } from "../../shared/messages";
 import type { SwPort } from "../port";
+import { playSound } from "../soundbox";
 import type { SyncStatus } from "../syncEngine";
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  ts: number;
+  mine: boolean;
+}
+
+export interface Burst {
+  id: string;
+  emoji: string;
+}
+
+const MAX_MESSAGES = 200;
+let seq = 0;
+const uid = () => `${Date.now()}-${seq++}`;
 
 export interface OverlayState {
   // auth
@@ -22,12 +41,18 @@ export interface OverlayState {
   joinUrl?: string;
   roomError?: string;
   sync: SyncStatus;
+  // social
+  messages: ChatMessage[];
+  bursts: Burst[];
   // ui
   collapsed: boolean;
   contentId: string | null;
   platform: PlatformId | null;
+  tab: "room" | "chat";
 
   toggleCollapsed: () => void;
+  setTab: (tab: "room" | "chat") => void;
+  removeBurst: (id: string) => void;
 }
 
 export const useOverlayStore = create<OverlayState>((set) => ({
@@ -35,10 +60,15 @@ export const useOverlayStore = create<OverlayState>((set) => ({
   conn: "disconnected",
   members: [],
   sync: { state: "idle" },
+  messages: [],
+  bursts: [],
   collapsed: false,
   contentId: null,
   platform: null,
+  tab: "room",
   toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
+  setTab: (tab) => set({ tab }),
+  removeBurst: (id) => set((s) => ({ bursts: s.bursts.filter((b) => b.id !== id) })),
 }));
 
 // applyMessage folds a worker message into the store.
@@ -84,7 +114,32 @@ export function applyMessage(msg: SwToCs): void {
     case "roomError":
       set({ roomError: `${msg.code}: ${msg.message}` });
       break;
+    case "chat":
+      pushMessage({
+        id: uid(),
+        senderId: msg.senderId,
+        senderName: msg.senderName,
+        text: msg.text,
+        ts: msg.ts,
+        mine: false,
+      });
+      break;
+    case "reaction":
+      pushBurst(msg.emoji);
+      break;
+    case "soundbox":
+      playSound(msg.soundId);
+      break;
   }
+}
+
+function pushMessage(m: ChatMessage): void {
+  useOverlayStore.setState((s) => ({ messages: [...s.messages, m].slice(-MAX_MESSAGES) }));
+}
+
+function pushBurst(emoji: string): void {
+  const b = { id: uid(), emoji };
+  useOverlayStore.setState((s) => ({ bursts: [...s.bursts, b] }));
 }
 
 export function setSyncStatus(sync: SyncStatus): void {
@@ -107,6 +162,9 @@ export interface OverlayActions {
   createRoom: () => void;
   joinRoom: (roomId: string) => void;
   leaveRoom: () => void;
+  sendChat: (text: string) => void;
+  sendReaction: (emoji: string) => void;
+  sendSoundbox: (soundId: string) => void;
 }
 
 export function makeActions(port: SwPort, adapter: PlatformAdapter): OverlayActions {
@@ -129,7 +187,30 @@ export function makeActions(port: SwPort, adapter: PlatformAdapter): OverlayActi
     joinRoom: (roomId) => port.send({ kind: "joinRoom", roomId }),
     leaveRoom: () => {
       port.send({ kind: "leaveRoom" });
-      useOverlayStore.setState({ room: undefined, members: [], joinUrl: undefined });
+      useOverlayStore.setState({ room: undefined, members: [], joinUrl: undefined, messages: [] });
+    },
+    // The backend relays to others only, so echo our own action locally.
+    sendChat: (text) => {
+      const t = text.trim();
+      if (!t) return;
+      port.send({ kind: "chat", text: t });
+      const { userId, displayName } = useOverlayStore.getState();
+      pushMessage({
+        id: uid(),
+        senderId: userId ?? "",
+        senderName: displayName ?? "You",
+        text: t,
+        ts: Date.now(),
+        mine: true,
+      });
+    },
+    sendReaction: (emoji) => {
+      port.send({ kind: "reaction", emoji });
+      pushBurst(emoji);
+    },
+    sendSoundbox: (soundId) => {
+      port.send({ kind: "soundbox", soundId });
+      playSound(soundId);
     },
   };
 }

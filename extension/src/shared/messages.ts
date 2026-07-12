@@ -21,7 +21,11 @@ export type CsToSw =
   // Local playback action to broadcast to the room.
   | { kind: "playback"; action: PlaybackAction; currentTime: number; mediaTimestamp: number; contentId?: string }
   // Host-only periodic position report.
-  | { kind: "heartbeat"; currentTime: number; paused: boolean; mediaTimestamp: number };
+  | { kind: "heartbeat"; currentTime: number; paused: boolean; mediaTimestamp: number }
+  // Social layer.
+  | { kind: "chat"; text: string }
+  | { kind: "reaction"; emoji: string }
+  | { kind: "soundbox"; soundId: string };
 
 // ---- Service worker → Content script (Port) ----
 export type ConnState = "disconnected" | "connecting" | "connected";
@@ -45,7 +49,11 @@ export type SwToCs =
   // A remote playback action to apply to the local player.
   | { kind: "remotePlayback"; senderId: string; action: PlaybackAction; currentTime: number; mediaTimestamp: number; seq?: number }
   // A host sync correction (drift check).
-  | { kind: "remoteSync"; senderId: string; currentTime: number; paused: boolean; mediaTimestamp: number; seq?: number };
+  | { kind: "remoteSync"; senderId: string; currentTime: number; paused: boolean; mediaTimestamp: number; seq?: number }
+  // Social layer (relayed from other members).
+  | { kind: "chat"; senderId: string; senderName: string; text: string; ts: number }
+  | { kind: "reaction"; senderId: string; senderName: string; emoji: string }
+  | { kind: "soundbox"; senderId: string; senderName: string; soundId: string };
 
 export const PORT_NAME = "wt-port";
 

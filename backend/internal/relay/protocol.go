@@ -14,6 +14,12 @@ const (
 	TypePlaybackEvent = "playback_event"
 	TypeHeartbeat     = "heartbeat"
 	TypePing          = "ping"
+	// Social layer (relayed verbatim to the rest of the room).
+	TypeChat     = "chat"
+	TypeReaction = "reaction"
+	TypeSoundbox = "soundbox"
+	// WebRTC signaling (targeted at one member).
+	TypeSignal = "webrtc_signal"
 )
 
 // Server → client message types.
@@ -36,17 +42,20 @@ const (
 	CodeBadMessage   = "BAD_MESSAGE"
 )
 
-// Envelope wraps every frame in both directions. SenderID is server-stamped
-// on relay (client-supplied values are ignored). Seq is a per-sender
-// monotonic counter used by receivers to drop stale/reordered events.
+// Envelope wraps every frame in both directions. SenderID/SenderName are
+// server-stamped on relay (client-supplied values are ignored). Seq is a
+// per-sender monotonic counter used by receivers to drop stale events.
 type Envelope struct {
-	V        int             `json:"v"`
-	Type     string          `json:"type"`
-	RoomID   string          `json:"roomId,omitempty"`
-	SenderID string          `json:"senderId,omitempty"`
-	Ts       int64           `json:"ts,omitempty"`
-	Seq      int64           `json:"seq,omitempty"`
-	Payload  json.RawMessage `json:"payload,omitempty"`
+	V          int    `json:"v"`
+	Type       string `json:"type"`
+	RoomID     string `json:"roomId,omitempty"`
+	SenderID   string `json:"senderId,omitempty"`
+	SenderName string `json:"senderName,omitempty"`
+	Ts         int64  `json:"ts,omitempty"`
+	Seq        int64  `json:"seq,omitempty"`
+	// Target restricts a relayed message to one recipient user (WebRTC signaling).
+	Target  string          `json:"target,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 type JoinRoomPayload struct {

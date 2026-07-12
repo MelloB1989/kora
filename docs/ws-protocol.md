@@ -37,6 +37,10 @@ Routing is application-level: every frame is a JSON envelope and the server disp
 | `leave_room` | `{}` | Leaves the current room. |
 | `playback_event` | `{"action": "play"\|"pause"\|"seek", "currentTime": 1234.56, "mediaTimestamp": 1752350000123, "contentId": "81234567"}` | `currentTime` in **seconds** (player position when the action happened); `mediaTimestamp` is the wall clock (ms) at the moment `currentTime` was read — used for latency compensation. Any member may send; relayed to all *other* members. |
 | `heartbeat` | `{"currentTime": 1234.56, "paused": false, "mediaTimestamp": ...}` | **Host only**, every 5s while playing. Non-host heartbeats are silently dropped. Rebroadcast to others as `sync`. |
+| `chat` | `{"text": "hello"}` | Relayed to the rest of the room (sender stamped). Ephemeral — not persisted. |
+| `reaction` | `{"emoji": "🔥"}` | Relayed to the rest of the room. |
+| `soundbox` | `{"soundId": "airhorn"}` | Relayed to the rest of the room; each client plays the sound locally. |
+| `webrtc_signal` | `{"kind": "offer"\|"answer"\|"candidate", "description"?, "candidate"?}` + top-level `"target": "<userId>"` | Relayed to **one** target member's connections only (mesh signaling). |
 | `ping` | `{}` | Keepalive. Server replies `pong`. Send every ~20s. |
 
 ## Server → Client
@@ -50,6 +54,8 @@ Routing is application-level: every frame is a JSON envelope and the server disp
 | `sync` | as `heartbeat` payload | Relayed host heartbeat. Clients treat it as drift *correction*, not a command. |
 | `host_changed` | `{"userId"}` | Host disconnected; earliest-joined remaining member promoted. |
 | `error` | `{"code","message"}` | Codes: `ROOM_NOT_FOUND`, `NOT_IN_ROOM`, `NOT_HOST`, `BAD_MESSAGE`, `ROOM_ENDED`. |
+| `chat` / `reaction` / `soundbox` | as sent | Relayed with `senderId` + `senderName` stamped. |
+| `webrtc_signal` | as sent | Relayed to the targeted member with `senderId` + `senderName` stamped. |
 | `pong` | `{}` | |
 
 ## Trust model (MVP)

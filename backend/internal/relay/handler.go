@@ -27,9 +27,10 @@ type Sender interface {
 }
 
 const (
-	connectionTTL  = 3 * time.Hour // API GW caps connections at 2h; TTL is the backstop
-	eventTTL       = 24 * time.Hour
-	fanoutParallel = 8
+	connectionTTL   = 3 * time.Hour // API GW caps connections at 2h; TTL is the backstop
+	eventTTL        = 24 * time.Hour
+	fanoutParallel  = 8
+	maxRelayPayload = 8 * 1024 // cap chat/reaction/soundbox payloads
 )
 
 // Handler routes WebSocket events. It is transport-agnostic: API Gateway
@@ -114,6 +115,10 @@ func (h *Handler) HandleMessage(ctx context.Context, connectionID string, data [
 		return h.handlePlayback(ctx, conn, env)
 	case TypeHeartbeat:
 		return h.handleHeartbeat(ctx, conn, env)
+	case TypeChat, TypeReaction, TypeSoundbox:
+		return h.handleRoomRelay(ctx, conn, env)
+	case TypeSignal:
+		return h.handleSignal(ctx, conn, env)
 	default:
 		return h.sendError(ctx, connectionID, CodeBadMessage, "unknown message type "+env.Type)
 	}
@@ -242,6 +247,57 @@ func (h *Handler) handleHeartbeat(ctx context.Context, conn *models.Connection, 
 		SenderID: conn.UserID, Ts: env.Ts, Seq: env.Seq,
 		Payload: mustJSON(p),
 	})
+}
+
+// handleRoomRelay rebroadcasts a social-layer message (chat/reaction/soundbox)
+// to the rest of the room, stamping the sender's identity. Payloads are
+// relayed verbatim and not persisted (ephemeral for the MVP).
+func (h *Handler) handleRoomRelay(ctx context.Context, conn *models.Connection, env Envelope) error {
+	if conn.RoomID == "" {
+		return h.sendError(ctx, conn.ConnectionID, CodeNotInRoom, "join a room first")
+	}
+	if len(env.Payload) > maxRelayPayload {
+		return h.sendError(ctx, conn.ConnectionID, CodeBadMessage, "payload too large")
+	}
+	return h.broadcast(ctx, conn.RoomID, conn.ConnectionID, Envelope{
+		V: ProtocolVersion, Type: env.Type, RoomID: conn.RoomID,
+		SenderID: conn.UserID, SenderName: conn.DisplayName,
+		Ts: env.Ts, Seq: env.Seq, Payload: env.Payload,
+	})
+}
+
+// handleSignal relays a WebRTC signaling frame to a single target member's
+// connections (mesh peers exchange SDP/ICE this way). Falls back to nothing
+// if the target isn't present.
+func (h *Handler) handleSignal(ctx context.Context, conn *models.Connection, env Envelope) error {
+	if conn.RoomID == "" {
+		return h.sendError(ctx, conn.ConnectionID, CodeNotInRoom, "join a room first")
+	}
+	if env.Target == "" {
+		return h.sendError(ctx, conn.ConnectionID, CodeBadMessage, "webrtc_signal requires target")
+	}
+	conns, err := h.store.ListRoomConnections(ctx, conn.RoomID)
+	if err != nil {
+		return err
+	}
+	out := Envelope{
+		V: ProtocolVersion, Type: TypeSignal, RoomID: conn.RoomID,
+		SenderID: conn.UserID, SenderName: conn.DisplayName,
+		Target: env.Target, Ts: env.Ts, Payload: env.Payload,
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return err
+	}
+	for _, c := range conns {
+		if c.UserID != env.Target || c.ConnectionID == conn.ConnectionID {
+			continue
+		}
+		if err := h.send.Send(ctx, c.ConnectionID, data); errors.Is(err, ErrGone) {
+			_ = h.store.DeleteConnection(ctx, c.ConnectionID)
+		}
+	}
+	return nil
 }
 
 // leaveRoom removes membership, notifies the room, and promotes a new host

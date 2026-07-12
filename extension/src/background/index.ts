@@ -12,6 +12,7 @@ import {
 import {
   ClientType,
   ServerType,
+  type ChatPayload,
   type Envelope,
   type ErrorPayload,
   type HeartbeatPayload,
@@ -19,7 +20,9 @@ import {
   type MemberInfo,
   type MemberLeftPayload,
   type PlaybackPayload,
+  type ReactionPayload,
   type RoomStatePayload,
+  type SoundboxPayload,
 } from "../shared/protocol";
 import * as api from "./api";
 import { WsClient, type WsStatus } from "./wsClient";
@@ -182,6 +185,16 @@ async function handleCsMessage(port: chrome.runtime.Port, msg: CsToSw): Promise<
         currentRoomId,
       );
       break;
+
+    case "chat":
+      if (currentRoomId) ws.send(ClientType.Chat, { text: msg.text }, currentRoomId);
+      break;
+    case "reaction":
+      if (currentRoomId) ws.send(ClientType.Reaction, { emoji: msg.emoji }, currentRoomId);
+      break;
+    case "soundbox":
+      if (currentRoomId) ws.send(ClientType.Soundbox, { soundId: msg.soundId }, currentRoomId);
+      break;
   }
 }
 
@@ -224,6 +237,27 @@ function handleWsFrame(env: Envelope): void {
         mediaTimestamp: p.mediaTimestamp,
         seq: env.seq,
       });
+      break;
+    }
+    case ServerType.Chat: {
+      const p = env.payload as ChatPayload;
+      broadcast({
+        kind: "chat",
+        senderId: env.senderId ?? "",
+        senderName: env.senderName ?? "",
+        text: p.text,
+        ts: env.ts ?? Date.now(),
+      });
+      break;
+    }
+    case ServerType.Reaction: {
+      const p = env.payload as ReactionPayload;
+      broadcast({ kind: "reaction", senderId: env.senderId ?? "", senderName: env.senderName ?? "", emoji: p.emoji });
+      break;
+    }
+    case ServerType.Soundbox: {
+      const p = env.payload as SoundboxPayload;
+      broadcast({ kind: "soundbox", senderId: env.senderId ?? "", senderName: env.senderName ?? "", soundId: p.soundId });
       break;
     }
     case ServerType.Error: {
