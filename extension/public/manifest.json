@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "WatchTogether",
+  "version": "0.1.0",
+  "description": "Sync Netflix playback with friends, plus a shared room overlay.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "alarms", "scripting"],
+  "host_permissions": ["https://www.netflix.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.netflix.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pageScript.js"],
+      "matches": ["https://www.netflix.com/*"]
+    }
+  ]
+}

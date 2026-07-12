@@ -1,0 +1,16 @@
+# Go
+backend/bootstrap
+backend/.aws-sam/
+*.test
+
+# Node
+node_modules/
+dist/
+*.local
+.env
+.env.*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

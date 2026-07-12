@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: WatchTogether backend — REST API (auth + room CRUD) and WebSocket API (playback relay)
+
+Parameters:
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Description: HS256 signing secret for auth tokens.
+  TablePrefix:
+    Type: String
+    Default: watchtogether-
+  AllowedOrigin:
+    Type: String
+    Default: "*"
+
+Globals:
+  Function:
+    Runtime: provided.al2023
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 15
+    Environment:
+      Variables:
+        TABLE_PREFIX: !Ref TablePrefix
+        JWT_SECRET: !Ref JwtSecret
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+
+Resources:
+  # ---------- DynamoDB ----------
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${TablePrefix}users"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: userId, AttributeType: S }
+        - { AttributeName: email, AttributeType: S }
+      KeySchema:
+        - { AttributeName: userId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: email-index
+          KeySchema:
+            - { AttributeName: email, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  RoomsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${TablePrefix}rooms"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: roomId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: roomId, KeyType: HASH }
+
+  RoomMembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${TablePrefix}room-members"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: roomId, AttributeType: S }
+        - { AttributeName: userId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: roomId, KeyType: HASH }
+        - { AttributeName: userId, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: user-index
+          KeySchema:
+            - { AttributeName: userId, KeyType: HASH }
+            - { AttributeName: roomId, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${TablePrefix}connections"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: connectionId, AttributeType: S }
+        - { AttributeName: roomId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: connectionId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: room-index
+          KeySchema:
+            - { AttributeName: roomId, KeyType: HASH }
+            - { AttributeName: connectionId, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  PlaybackEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${TablePrefix}playback-events"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: roomId, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: roomId, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  # ---------- REST API ----------
+  RestApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+
+  RestFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: .
+      Handler: rest
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RoomsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RoomMembersTable }
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RestApi
+            Path: /{proxy+}
+            Method: ANY
+
+  # ---------- WebSocket API ----------
+  WsApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-ws"
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.type"
+
+  WsFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: .
+      Handler: ws
+      Environment:
+        Variables:
+          WS_API_ENDPOINT: !Sub "https://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref UsersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RoomsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RoomMembersTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref PlaybackEventsTable }
+        - Statement:
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/*"
+
+  WsFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn: WsApi
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WsFunction
+      Principal: apigateway.amazonaws.com
+
+  WsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WsApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsFunction.Arn}/invocations"
+
+  WsConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: "$connect"
+      Target: !Sub "integrations/${WsIntegration}"
+
+  WsDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: "$disconnect"
+      Target: !Sub "integrations/${WsIntegration}"
+
+  WsDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: "$default"
+      Target: !Sub "integrations/${WsIntegration}"
+
+  WsDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - WsConnectRoute
+      - WsDisconnectRoute
+      - WsDefaultRoute
+    Properties:
+      ApiId: !Ref WsApi
+
+  WsStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WsApi
+      DeploymentId: !Ref WsDeployment
+      StageName: prod
+      AutoDeploy: true
+
+Outputs:
+  RestApiUrl:
+    Description: Base URL for the REST API.
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  WebSocketUrl:
+    Description: WebSocket URL — connect with ?token=<jwt>.
+    Value: !Sub "wss://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
