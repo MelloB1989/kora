@@ -27,10 +27,19 @@ type Store interface {
 	UpdateRoomStatus(ctx context.Context, roomID, status string) error
 	UpdateRoomHost(ctx context.Context, roomID, hostUserID string) error
 
+	UpdateRoomProgress(ctx context.Context, roomID string, position, duration float64) error
+
 	// Room members
 	PutMember(ctx context.Context, m *models.RoomMember) error
+	GetMember(ctx context.Context, roomID, userID string) (*models.RoomMember, error)
 	DeleteMember(ctx context.Context, roomID, userID string) error
 	ListMembers(ctx context.Context, roomID string) ([]models.RoomMember, error)
+
+	// Watch history / progress (dashboard)
+	PutWatchSession(ctx context.Context, s *models.WatchSession) error
+	ListWatchSessions(ctx context.Context, userID string) ([]models.WatchSession, error)
+	UpsertShowProgress(ctx context.Context, p *models.ShowProgress) error
+	ListShowProgress(ctx context.Context, userID string) ([]models.ShowProgress, error)
 
 	// WebSocket connections
 	PutConnection(ctx context.Context, c *models.Connection) error

@@ -37,5 +37,11 @@ func (a *API) Router(allowedOrigin string) http.Handler {
 	mux.Handle("GET /v1/rooms/{roomId}", a.requireAuth(a.handleGetRoom))
 	mux.Handle("DELETE /v1/rooms/{roomId}", a.requireAuth(a.handleEndRoom))
 
+	// Dashboard (Phase 5)
+	mux.Handle("GET /v1/me", a.requireAuth(a.handleMe))
+	mux.Handle("GET /v1/me/sessions", a.requireAuth(a.handleMySessions))
+	mux.Handle("GET /v1/me/progress", a.requireAuth(a.handleMyProgress))
+	mux.Handle("GET /v1/me/stats", a.requireAuth(a.handleMyStats))
+
 	return withCORS(allowedOrigin, mux)
 }

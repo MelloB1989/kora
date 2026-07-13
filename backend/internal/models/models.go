@@ -46,6 +46,10 @@ type Room struct {
 	Title      string    `dynamodbav:"title,omitempty" json:"title,omitempty"`
 	Status     string    `dynamodbav:"status" json:"status"`
 	CreatedAt  time.Time `dynamodbav:"createdAt" json:"createdAt"`
+	// Latest known playback position/length, updated by heartbeats and used to
+	// derive ShowProgress when a member leaves.
+	LastPosition float64 `dynamodbav:"lastPosition,omitempty" json:"lastPosition,omitempty"`
+	Duration     float64 `dynamodbav:"duration,omitempty" json:"duration,omitempty"`
 }
 
 type RoomMember struct {
@@ -81,6 +85,39 @@ type PlaybackEvent struct {
 	MediaTimestamp int64   `dynamodbav:"mediaTimestamp" json:"mediaTimestamp"`
 	ContentID      string  `dynamodbav:"contentId,omitempty" json:"contentId,omitempty"`
 	ExpiresAt      int64   `dynamodbav:"expiresAt" json:"-"`
+}
+
+// WatchSession is one member's stay in a room, written when they leave.
+// SortKey sorts newest-last within a user's partition.
+type WatchSession struct {
+	UserID         string    `dynamodbav:"userId" json:"userId"`
+	SortKey        string    `dynamodbav:"sk" json:"-"`
+	SessionID      string    `dynamodbav:"sessionId" json:"sessionId"`
+	RoomID         string    `dynamodbav:"roomId" json:"roomId"`
+	Platform       string    `dynamodbav:"platform" json:"platform"`
+	ContentID      string    `dynamodbav:"contentId" json:"contentId"`
+	Title          string    `dynamodbav:"title,omitempty" json:"title,omitempty"`
+	StartedAt      time.Time `dynamodbav:"startedAt" json:"startedAt"`
+	EndedAt        time.Time `dynamodbav:"endedAt" json:"endedAt"`
+	SecondsWatched int64     `dynamodbav:"secondsWatched" json:"secondsWatched"`
+}
+
+// ShowProgress is a member's furthest position in a piece of content,
+// keyed by (userId, platform#contentId).
+type ShowProgress struct {
+	UserID          string    `dynamodbav:"userId" json:"userId"`
+	SortKey         string    `dynamodbav:"sk" json:"-"` // "<platform>#<contentId>"
+	Platform        string    `dynamodbav:"platform" json:"platform"`
+	ContentID       string    `dynamodbav:"contentId" json:"contentId"`
+	Title           string    `dynamodbav:"title,omitempty" json:"title,omitempty"`
+	LastPosition    float64   `dynamodbav:"lastPosition" json:"lastPosition"`
+	Duration        float64   `dynamodbav:"duration" json:"duration"`
+	PercentComplete float64   `dynamodbav:"percentComplete" json:"percentComplete"`
+	UpdatedAt       time.Time `dynamodbav:"updatedAt" json:"updatedAt"`
+}
+
+func ProgressSortKey(platform, contentID string) string {
+	return platform + "#" + contentID
 }
 
 func EventSortKey(ts time.Time, eventID string) string {

@@ -70,12 +70,14 @@ export interface JoinRoomPayload {
 export interface PlaybackPayload {
   action: PlaybackAction;
   currentTime: number; // seconds
+  duration?: number; // seconds
   mediaTimestamp: number; // epoch ms when currentTime was read
   contentId?: string;
 }
 
 export interface HeartbeatPayload {
   currentTime: number;
+  duration?: number;
   paused: boolean;
   mediaTimestamp: number;
 }

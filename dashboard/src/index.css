@@ -1,3 +1,46 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Data-viz palette tokens (validated reference instance). Light + dark are both
+   selected — the dark column is the same hues re-stepped for the dark surface,
+   not an auto-flip. Charts reference these by role. */
+:root {
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --ink-1: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  /* categorical slots 1–4 → platforms */
+  --series-1: #2a78d6; /* netflix */
+  --series-2: #1baf7a; /* prime  */
+  --series-3: #eda100; /* hotstar */
+  --series-4: #008300; /* youtube */
+  --seq: #2a78d6; /* single-hue sequential (weekly bars) */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --ink-1: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-2: #199e70;
+    --series-3: #c98500;
+    --series-4: #008300;
+    --seq: #3987e5;
+  }
+}
+
+body {
+  background: var(--page);
+  color: var(--ink-1);
+}

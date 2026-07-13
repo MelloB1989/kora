@@ -171,6 +171,7 @@ async function handleCsMessage(port: chrome.runtime.Port, msg: CsToSw): Promise<
         {
           action: msg.action,
           currentTime: msg.currentTime,
+          duration: msg.duration,
           mediaTimestamp: msg.mediaTimestamp,
           contentId: msg.contentId,
         },
@@ -182,7 +183,7 @@ async function handleCsMessage(port: chrome.runtime.Port, msg: CsToSw): Promise<
       if (!currentRoomId) return;
       ws.send<HeartbeatPayload>(
         ClientType.Heartbeat,
-        { currentTime: msg.currentTime, paused: msg.paused, mediaTimestamp: msg.mediaTimestamp },
+        { currentTime: msg.currentTime, duration: msg.duration, paused: msg.paused, mediaTimestamp: msg.mediaTimestamp },
         currentRoomId,
       );
       break;

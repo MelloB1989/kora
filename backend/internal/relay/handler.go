@@ -217,6 +217,9 @@ func (h *Handler) handlePlayback(ctx context.Context, conn *models.Connection, e
 	}); err != nil {
 		h.log.Error("persist playback event", "err", err)
 	}
+	if err := h.store.UpdateRoomProgress(ctx, conn.RoomID, p.CurrentTime, p.Duration); err != nil {
+		h.log.Error("update room progress", "err", err)
+	}
 
 	return h.broadcast(ctx, conn.RoomID, conn.ConnectionID, Envelope{
 		V: ProtocolVersion, Type: TypePlaybackEvent, RoomID: conn.RoomID,
@@ -241,6 +244,9 @@ func (h *Handler) handleHeartbeat(ctx context.Context, conn *models.Connection, 
 	var p HeartbeatPayload
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
 		return h.sendError(ctx, conn.ConnectionID, CodeBadMessage, "bad heartbeat payload")
+	}
+	if err := h.store.UpdateRoomProgress(ctx, conn.RoomID, p.CurrentTime, p.Duration); err != nil {
+		h.log.Error("update room progress", "err", err)
 	}
 	return h.broadcast(ctx, conn.RoomID, conn.ConnectionID, Envelope{
 		V: ProtocolVersion, Type: TypeSync, RoomID: conn.RoomID,
@@ -304,6 +310,11 @@ func (h *Handler) handleSignal(ctx context.Context, conn *models.Connection, env
 // if the leaver was hosting. The connection row itself is untouched.
 func (h *Handler) leaveRoom(ctx context.Context, conn *models.Connection) error {
 	roomID := conn.RoomID
+
+	// Record watch history before removing the member (best-effort — a failure
+	// here must not block the leave).
+	h.recordWatchSession(ctx, conn, roomID)
+
 	if err := h.store.DeleteMember(ctx, roomID, conn.UserID); err != nil {
 		return err
 	}
@@ -344,6 +355,62 @@ func (h *Handler) leaveRoom(ctx context.Context, conn *models.Connection) error 
 		V: ProtocolVersion, Type: TypeHostChanged, RoomID: roomID, Ts: h.now().UnixMilli(),
 		Payload: mustJSON(HostChangedPayload{UserID: next.UserID}),
 	})
+}
+
+// recordWatchSession writes a WatchSession for the leaving member and updates
+// their ShowProgress from the room's latest known position. Best-effort:
+// errors are logged, not returned, so they never block a leave/disconnect.
+func (h *Handler) recordWatchSession(ctx context.Context, conn *models.Connection, roomID string) {
+	member, err := h.store.GetMember(ctx, roomID, conn.UserID)
+	if err != nil {
+		return // not actually a member (e.g. join failed) — nothing to record
+	}
+	room, err := h.rooms.Get(ctx, roomID)
+	if err != nil {
+		return
+	}
+	now := h.now().UTC()
+	secs := int64(now.Sub(member.JoinedAt).Seconds())
+	if secs < 0 {
+		secs = 0
+	}
+
+	sessionID := models.NewID("ws")
+	if err := h.store.PutWatchSession(ctx, &models.WatchSession{
+		UserID:         conn.UserID,
+		SortKey:        models.EventSortKey(now, sessionID),
+		SessionID:      sessionID,
+		RoomID:         roomID,
+		Platform:       room.Platform,
+		ContentID:      room.ContentID,
+		Title:          room.Title,
+		StartedAt:      member.JoinedAt,
+		EndedAt:        now,
+		SecondsWatched: secs,
+	}); err != nil {
+		h.log.Error("put watch session", "err", err)
+	}
+
+	if room.ContentID == "" {
+		return
+	}
+	percent := 0.0
+	if room.Duration > 0 {
+		percent = min(100, room.LastPosition/room.Duration*100)
+	}
+	if err := h.store.UpsertShowProgress(ctx, &models.ShowProgress{
+		UserID:          conn.UserID,
+		SortKey:         models.ProgressSortKey(room.Platform, room.ContentID),
+		Platform:        room.Platform,
+		ContentID:       room.ContentID,
+		Title:           room.Title,
+		LastPosition:    room.LastPosition,
+		Duration:        room.Duration,
+		PercentComplete: percent,
+		UpdatedAt:       now,
+	}); err != nil {
+		h.log.Error("upsert show progress", "err", err)
+	}
 }
 
 // broadcast fans a frame out to every connection in the room except the

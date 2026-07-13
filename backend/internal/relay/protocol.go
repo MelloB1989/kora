@@ -68,6 +68,7 @@ type JoinRoomPayload struct {
 type PlaybackPayload struct {
 	Action         string  `json:"action"` // play | pause | seek
 	CurrentTime    float64 `json:"currentTime"`
+	Duration       float64 `json:"duration,omitempty"`
 	MediaTimestamp int64   `json:"mediaTimestamp"`
 	ContentID      string  `json:"contentId,omitempty"`
 }
@@ -76,6 +77,7 @@ type PlaybackPayload struct {
 // non-hosts as TypeSync for drift correction.
 type HeartbeatPayload struct {
 	CurrentTime    float64 `json:"currentTime"`
+	Duration       float64 `json:"duration,omitempty"`
 	Paused         bool    `json:"paused"`
 	MediaTimestamp int64   `json:"mediaTimestamp"`
 }

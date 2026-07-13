@@ -20,9 +20,9 @@ export type CsToSw =
   | { kind: "joinRoom"; roomId: string }
   | { kind: "leaveRoom" }
   // Local playback action to broadcast to the room.
-  | { kind: "playback"; action: PlaybackAction; currentTime: number; mediaTimestamp: number; contentId?: string }
+  | { kind: "playback"; action: PlaybackAction; currentTime: number; duration?: number; mediaTimestamp: number; contentId?: string }
   // Host-only periodic position report.
-  | { kind: "heartbeat"; currentTime: number; paused: boolean; mediaTimestamp: number }
+  | { kind: "heartbeat"; currentTime: number; duration?: number; paused: boolean; mediaTimestamp: number }
   // Social layer.
   | { kind: "chat"; text: string }
   | { kind: "reaction"; emoji: string }

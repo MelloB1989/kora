@@ -6,17 +6,17 @@ dashboard. Each member watches on **their own logged-in account** through the
 platform's **native player** — we relay only playback control events and
 metadata. **No DRM circumvention, no video re-streaming or proxying.**
 
-This repository contains **Phase 1**: playback sync for **Netflix**, with the
-full monorepo scaffolded for later phases (multi-platform, chat/reactions,
-voice/video, dashboard).
+All five build phases are implemented: playback sync across **Netflix, Prime
+Video, Hotstar, and YouTube**; text chat, reactions, and soundbox; WebRTC
+voice/video; and a watch-time analytics dashboard.
 
 ## Monorepo
 
 | Path | What it is | Status |
 |---|---|---|
-| `backend/` | Go — AWS Lambda (SAM) REST + WebSocket APIs, DynamoDB | Phase 1 ✅ |
-| `extension/` | Chrome MV3 extension — Netflix adapter, sync engine, overlay | Phase 1 ✅ |
-| `dashboard/` | Vite + React + Tailwind web app | Placeholder (Phase 5) |
+| `backend/` | Go — AWS Lambda (SAM) REST + WebSocket APIs, DynamoDB | ✅ |
+| `extension/` | Chrome MV3 extension — 4 platform adapters, sync engine, overlay, chat, WebRTC | ✅ |
+| `dashboard/` | Vite + React + Tailwind — auth, watch-time analytics, show progress | ✅ |
 | `docs/` | Architecture and WebSocket protocol specs | — |
 
 See `docs/architecture.md` and `docs/ws-protocol.md` for design detail.
@@ -49,16 +49,27 @@ JWT_SECRET=dev-secret make localdev
 cd extension
 npm install
 npm run build      # outputs dist/
+
+# 3) Dashboard (optional; points at localhost:8080 by default)
+cd dashboard
+npm install
+npm run dev        # http://localhost:5173
 ```
 
 Load the extension: `chrome://extensions` → enable Developer mode → **Load
-unpacked** → select `extension/dist`. Requires Chrome 116+.
+unpacked** → select `extension/dist`. Requires Chrome 116+. It activates on
+Netflix, Prime Video, Hotstar, and YouTube watch pages.
 
-To point the extension at a deployed backend instead, create `extension/.env`:
+To point the extension or dashboard at a deployed backend, create a `.env` in
+the respective package:
 
 ```
+# extension/.env
 VITE_API_URL=https://xxxx.execute-api.us-east-1.amazonaws.com/prod
 VITE_WS_URL=wss://xxxx.execute-api.us-east-1.amazonaws.com/prod
+
+# dashboard/.env
+VITE_API_URL=https://xxxx.execute-api.us-east-1.amazonaws.com/prod
 ```
 
 ### Manual end-to-end test (two people in sync)
@@ -90,18 +101,32 @@ make deploy JWT_SECRET="$(openssl rand -hex 32)"
 ```
 
 This provisions two Lambda functions (REST + WebSocket), an HTTP API, a
-WebSocket API, and five DynamoDB tables (`Users`, `Rooms`, `RoomMembers`,
-`Connections`, `PlaybackEvents`). The stack outputs the REST and `wss://` URLs
-to put in `extension/.env`.
+WebSocket API, and seven DynamoDB tables (`Users`, `Rooms`, `RoomMembers`,
+`Connections`, `PlaybackEvents`, `WatchSessions`, `ShowProgress`). The stack
+outputs the REST and `wss://` URLs to put in `extension/.env`.
 
-## Roadmap
+## Features
 
-- **Phase 1 (done)** — Netflix playback sync MVP.
-- **Phase 2** — Prime Video, Hotstar, YouTube adapters behind the same
-  `PlatformAdapter` interface.
-- **Phase 3** — text chat + reactions/soundbox over the existing WebSocket.
-- **Phase 4** — WebRTC voice/video (PiP), signaled over the WebSocket.
-- **Phase 5** — dashboard: watch-time analytics and per-show progress.
+- **Phase 1** — playback sync MVP (Netflix): rooms, play/pause/seek relay,
+  host-heartbeat drift correction.
+- **Phase 2** — Prime Video, Hotstar, and YouTube adapters behind one
+  `PlatformAdapter` interface (add a platform: one entry in
+  `extension/src/shared/platforms.ts` + one page-script backend).
+- **Phase 3** — text chat, emoji reactions (floating bursts), and a soundbox
+  (Web Audio-synthesized effects) over the existing WebSocket.
+- **Phase 4** — WebRTC voice/video mesh with a draggable PiP overlay, mute,
+  push-to-talk, and camera toggle; signaling relayed over the WebSocket.
+- **Phase 5** — dashboard: watch-time analytics (totals, per-platform, weekly),
+  room history, and per-show progress.
+
+### Known limitations / next steps
+- Streaming-site player hooks (Netflix player API; Prime/Hotstar `<video>`) are
+  unofficial and need validation against each live site; they degrade to a
+  "sync unavailable" state rather than crashing.
+- WebRTC uses public STUN and a full mesh — add a TURN server for restrictive
+  NATs and an SFU (LiveKit/mediasoup) for rooms larger than ~4-5.
+- Chat/reactions are ephemeral; soundbox uses synthesized effects (S3-hosted
+  custom clips are a later enhancement).
 
 ## Licensing note
 

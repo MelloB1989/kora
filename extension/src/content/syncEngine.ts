@@ -44,6 +44,7 @@ export class SyncEngine {
         kind: "playback",
         action: e.action,
         currentTime: e.state.currentTime,
+        duration: e.state.duration || undefined,
         mediaTimestamp: Date.now(),
         contentId: this.adapter.getContentId() ?? undefined,
       });
@@ -171,6 +172,7 @@ export class SyncEngine {
         this.port.send({
           kind: "heartbeat",
           currentTime: s.currentTime,
+          duration: s.duration || undefined,
           paused: s.paused,
           mediaTimestamp: Date.now(),
         });

@@ -18,6 +18,8 @@ type Memory struct {
 	members     map[string]map[string]models.RoomMember // roomId -> userId -> member
 	conns       map[string]models.Connection
 	events      map[string][]models.PlaybackEvent // roomId -> events (append order)
+	sessions    map[string][]models.WatchSession  // userId -> sessions
+	progress    map[string]models.ShowProgress    // userId#sk -> progress
 }
 
 var _ Store = (*Memory)(nil)
@@ -30,6 +32,8 @@ func NewMemory() *Memory {
 		members:     map[string]map[string]models.RoomMember{},
 		conns:       map[string]models.Connection{},
 		events:      map[string][]models.PlaybackEvent{},
+		sessions:    map[string][]models.WatchSession{},
+		progress:    map[string]models.ShowProgress{},
 	}
 }
 
@@ -111,6 +115,21 @@ func (s *Memory) UpdateRoomHost(_ context.Context, roomID, hostUserID string) er
 	return nil
 }
 
+func (s *Memory) UpdateRoomProgress(_ context.Context, roomID string, position, duration float64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.rooms[roomID]
+	if !ok {
+		return ErrNotFound
+	}
+	r.LastPosition = position
+	if duration > 0 {
+		r.Duration = duration
+	}
+	s.rooms[roomID] = r
+	return nil
+}
+
 func (s *Memory) PutMember(_ context.Context, m *models.RoomMember) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -119,6 +138,16 @@ func (s *Memory) PutMember(_ context.Context, m *models.RoomMember) error {
 	}
 	s.members[m.RoomID][m.UserID] = *m
 	return nil
+}
+
+func (s *Memory) GetMember(_ context.Context, roomID, userID string) (*models.RoomMember, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m, ok := s.members[roomID][userID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return &m, nil
 }
 
 func (s *Memory) DeleteMember(_ context.Context, roomID, userID string) error {
@@ -210,4 +239,40 @@ func (s *Memory) LatestPlaybackEvent(_ context.Context, roomID string) (*models.
 		}
 	}
 	return &best, nil
+}
+
+func (s *Memory) PutWatchSession(_ context.Context, ws *models.WatchSession) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessions[ws.UserID] = append(s.sessions[ws.UserID], *ws)
+	return nil
+}
+
+func (s *Memory) ListWatchSessions(_ context.Context, userID string) ([]models.WatchSession, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := append([]models.WatchSession(nil), s.sessions[userID]...)
+	// Newest first.
+	sort.Slice(out, func(i, j int) bool { return out[i].SortKey > out[j].SortKey })
+	return out, nil
+}
+
+func (s *Memory) UpsertShowProgress(_ context.Context, p *models.ShowProgress) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.progress[p.UserID+"|"+p.SortKey] = *p
+	return nil
+}
+
+func (s *Memory) ListShowProgress(_ context.Context, userID string) ([]models.ShowProgress, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []models.ShowProgress
+	for _, p := range s.progress {
+		if p.UserID == userID {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
+	return out, nil
 }

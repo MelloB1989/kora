@@ -395,6 +395,48 @@ func TestSignalTargetsSingleMember(t *testing.T) {
 	}
 }
 
+func TestLeaveRecordsWatchSessionAndProgress(t *testing.T) {
+	fx := newFixture(t)
+	room := fx.createRoom(t, "u_a")
+	fx.connect(t, "ca", "u_a", "Alice")
+
+	// Deterministic clock: join at t0, leave 120s later.
+	base := time.Now()
+	calls := 0
+	fx.h.now = func() time.Time {
+		calls++
+		if calls == 1 {
+			return base // JoinedAt
+		}
+		return base.Add(120 * time.Second)
+	}
+
+	fx.join(t, "ca", room.RoomID)
+	// A heartbeat sets the room's position/duration (drives ShowProgress).
+	fx.message(t, "ca", Envelope{V: 1, Type: TypeHeartbeat, Payload: mustJSON(HeartbeatPayload{
+		CurrentTime: 1500, Duration: 3000, MediaTimestamp: base.UnixMilli(),
+	})})
+	if err := fx.h.HandleDisconnect(context.Background(), "ca"); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := fx.store.ListWatchSessions(context.Background(), "u_a")
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("expected 1 watch session, got %d err=%v", len(sessions), err)
+	}
+	if sessions[0].SecondsWatched != 120 || sessions[0].Platform != models.PlatformNetflix {
+		t.Fatalf("bad session: %+v", sessions[0])
+	}
+
+	progress, err := fx.store.ListShowProgress(context.Background(), "u_a")
+	if err != nil || len(progress) != 1 {
+		t.Fatalf("expected 1 progress row, got %d err=%v", len(progress), err)
+	}
+	if progress[0].PercentComplete != 50 {
+		t.Fatalf("expected 50%% complete, got %v", progress[0].PercentComplete)
+	}
+}
+
 func TestPingPong(t *testing.T) {
 	fx := newFixture(t)
 	fx.connect(t, "c1", "u1", "A")

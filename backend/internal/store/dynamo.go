@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -34,6 +35,8 @@ const (
 	tableMembers     = "room-members"
 	tableConnections = "connections"
 	tableEvents      = "playback-events"
+	tableSessions    = "watch-sessions"
+	tableProgress    = "show-progress"
 
 	indexEmail = "email-index"
 	indexRoom  = "room-index"
@@ -150,10 +153,48 @@ func (d *Dynamo) UpdateRoomHost(ctx context.Context, roomID, hostUserID string) 
 	return d.updateRoomAttr(ctx, roomID, "hostUserId", hostUserID)
 }
 
+func (d *Dynamo) UpdateRoomProgress(ctx context.Context, roomID string, position, duration float64) error {
+	names := map[string]string{"#p": "lastPosition"}
+	values := map[string]types.AttributeValue{
+		":p": &types.AttributeValueMemberN{Value: strconv.FormatFloat(position, 'f', -1, 64)},
+	}
+	expr := "SET #p = :p"
+	if duration > 0 {
+		names["#d"] = "duration"
+		values[":d"] = &types.AttributeValueMemberN{Value: strconv.FormatFloat(duration, 'f', -1, 64)}
+		expr += ", #d = :d"
+	}
+	_, err := d.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName:                 d.table(tableRooms),
+		Key:                       skey("roomId", roomID),
+		UpdateExpression:          aws.String(expr),
+		ConditionExpression:       aws.String("attribute_exists(roomId)"),
+		ExpressionAttributeNames:  names,
+		ExpressionAttributeValues: values,
+	})
+	var cfe *types.ConditionalCheckFailedException
+	if errors.As(err, &cfe) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // --- Room members ---
 
 func (d *Dynamo) PutMember(ctx context.Context, m *models.RoomMember) error {
 	return d.putItem(ctx, tableMembers, m, nil)
+}
+
+func (d *Dynamo) GetMember(ctx context.Context, roomID, userID string) (*models.RoomMember, error) {
+	var m models.RoomMember
+	key := map[string]types.AttributeValue{
+		"roomId": &types.AttributeValueMemberS{Value: roomID},
+		"userId": &types.AttributeValueMemberS{Value: userID},
+	}
+	if err := d.getItem(ctx, tableMembers, key, &m); err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (d *Dynamo) DeleteMember(ctx context.Context, roomID, userID string) error {
@@ -270,4 +311,52 @@ func (d *Dynamo) LatestPlaybackEvent(ctx context.Context, roomID string) (*model
 		return nil, err
 	}
 	return &e, nil
+}
+
+// --- Watch sessions / show progress ---
+
+func (d *Dynamo) PutWatchSession(ctx context.Context, s *models.WatchSession) error {
+	return d.putItem(ctx, tableSessions, s, nil)
+}
+
+func (d *Dynamo) ListWatchSessions(ctx context.Context, userID string) ([]models.WatchSession, error) {
+	res, err := d.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              d.table(tableSessions),
+		KeyConditionExpression: aws.String("userId = :u"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":u": &types.AttributeValueMemberS{Value: userID},
+		},
+		ScanIndexForward: aws.Bool(false), // newest first
+		Limit:            aws.Int32(200),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []models.WatchSession
+	if err := attributevalue.UnmarshalListOfMaps(res.Items, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (d *Dynamo) UpsertShowProgress(ctx context.Context, p *models.ShowProgress) error {
+	return d.putItem(ctx, tableProgress, p, nil)
+}
+
+func (d *Dynamo) ListShowProgress(ctx context.Context, userID string) ([]models.ShowProgress, error) {
+	res, err := d.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              d.table(tableProgress),
+		KeyConditionExpression: aws.String("userId = :u"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":u": &types.AttributeValueMemberS{Value: userID},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []models.ShowProgress
+	if err := attributevalue.UnmarshalListOfMaps(res.Items, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
